@@ -1,0 +1,97 @@
+---
+title: "Connecting R to Postgres"
+author: "Joshua Hummell"
+date: "2/7/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+  
+# How to connect R to a Postgres
+  
+  
+### In this document, I will show you how to connect your Postgres SQL (13.1) to your r. Now, there is currently an issue with connecting through sha passords so for th purpose of this demonstation I have removed the need for a password to connect to my local computer. **Do not do this for any database shared online!**   
+  
+## Setup  
+
+The first step is to install the packages necessary, there are a few but I have chosen to use RPostgreSQL, which you may haev to install on to your machine. 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# install.packages("RPostgreSQL")
+library("RPostgreSQL")
+```
+
+## Connection  
+
+ next step is to create the connection
+
+```{r}
+# loads the PostgreSQL driver
+drv <- dbDriver("PostgreSQL")
+# creates a connection to the postgres database
+# "con", short for connection will be used later to reference this log in.
+#I have named my database "homework_2"
+con <- dbConnect(drv, dbname = "homework_2",
+                 host = "localhost", port = 5432,
+                 user = "postgres", password = "")
+```
+  
+Voila, now that we have the connection. Let's test our connection! My table name is "movies", so I'll check and make sure it is there.
+
+```{r}
+dbExistsTable(con, "movies")
+```
+  
+  
+## Queries  
+Now that we know it is connected, let's run a basic query!
+
+```{r}
+df_postgres <- dbGetQuery(con, "SELECT * from movies")
+
+
+df_postgres
+```
+  
+And there it is!  
+  
+Now let's write some data to this data frame
+```{r}
+
+ins <- c(11,"Jack",1,2,2,1,2,5)
+df_postgres <- rbind(df_postgres, ins)
+```
+  
+Now that we inserted some data, let's send it back to sql  
+```{r}
+
+dbWriteTable(con, "movies", df_postgres,overwrite=TRUE,row.names=FALSE)
+```
+  
+And let's check to see if it is all there  
+```{r}
+df_postgres <- dbGetQuery(con, "SELECT * from movies")
+
+
+df_postgres
+```
+  
+And Voila, there it is
+
+
+
+Before you go, make sure you close the connection  
+```{r}
+dbDisconnect(con) 
+```
+
+
+## Final Notes
+Do not, I repeat, do not ever have a database without a password. Immediately after this example, I reverted it back to have password protection!
+
+
+
+
+
+
