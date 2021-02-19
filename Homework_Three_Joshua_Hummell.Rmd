@@ -1,0 +1,178 @@
+---
+title: "Homework 3"
+author: "Joshua Hummell"
+date: "2/17/2021"
+output: html_document
+---
+
+## Working with Regex  
+#### In this assignment, there are four questions that need to be answered!  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```  
+First step is to load my packages:
+```{r message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+```
+  
+Now let's begin  
+  
+  
+# #1
+#### Using the 173 majors listed in fivethirtyeight.com’s College Majors dataset [https://fivethirtyeight.com/features/the-economic-guide-to-picking-a-college-major/], provide code that identifies the majors that contain either "DATA" or "STATISTICS"
+  
+Let's load the data!  
+```{r}
+degrees <- read.csv("https://raw.githubusercontent.com/fivethirtyeight/data/master/college-majors/majors-list.csv",header = TRUE, sep = ",")
+
+str(degrees)
+```
+  Now we have to look for all the majors that contain "DATA" or "STATISTICS"
+```{r}
+grep(pattern = 'data|statistics',degrees$Major, value = TRUE, ignore.case = TRUE)
+```
+And there are only three, how disappointing!
+
+  
+    
+      
+
+
+
+# #2 
+#### Write code that transforms the data below:
+
+[1] "bell pepper"  "bilberry"     "blackberry"   "blood orange"
+
+[5] "blueberry"    "cantaloupe"   "chili pepper" "cloudberry"  
+
+[9] "elderberry"   "lime"         "lychee"       "mulberry"    
+
+[13] "olive"        "salal berry"
+
+Into a format like this:
+
+c("bell pepper", "bilberry", "blackberry", "blood orange", "blueberry", "cantaloupe", "chili pepper", "cloudberry", "elderberry", "lime", "lychee", "mulberry", "olive", "salal berry")
+  
+So, as I understand the question, it wants me to create a character string and then print it out like I am creating a string.   
+
+The only tricky part, which took more time than I am proud to admit to figure out, is that you need a paste within a paste, ie 'Paste Inception'  
+```{r}
+l <- c("bell pepper", "bilberry", "blackberry", "blood orange", "blueberry", "cantaloupe", "chili pepper", "cloudberry", "elderberry", "lime", "lychee", "mulberry", "olive", "salal berry")
+
+
+x<- paste('c(', paste('"',l,'"',sep = "", collapse = ','), sep = "",')')
+
+
+writeLines(x)
+
+```  
+
+
+
+# #3 
+#### Describe, in words, what these expressions will match:  
+
+"(.)\1\1"  
+It will look for the first letter (that does not start on a new line) at the start and see if it repeats twice afterwards  
+
+"(.)(.)\\2\\1"  
+I will look at the first two starting letters (that do not start on a new line) and see if something matches the inverse  
+
+"(..)\1"  
+It will at the first two letters (that do not start on a new line) and see if something repeats  
+
+"(.).\\1.\\1"  
+It will look at the first letter (that does not start on a new line), a character after it, the first character again, a character after it, and then the first character again  
+
+
+"(.)(.)(.).*\\3\\2\\1"
+it will look at the first three letters (that do not start on a new line), see if there is a number after it repeated 0 or more times, then see if there is something that matches the first pattern in the inverse  
+
+
+
+# #4
+#### Construct regular expressions to match words that:
+
+#### A) Start and end with the same character.  
+
+I was struggling to figure out this code, so I broke it down:
+
+1. in order to get the first character, we need to find out what the first character is so we use '^(.)' 
+2. Next, we need to tell the regex that there are other characters in between, so ".*" and then we want to match the end with to the first group, "\\1$"
+  + together that is ".*\\1$"
+3. ALmost done, but what happens if the string only has 2 characters? We need to add in one more piece in case it's a string like "oo"
+  + This one is easy, it's just like the last one, but without the ".*", so "\\1$"
+4. When we combine them we will need to use '|' as an if statement
+5. Also, to not confuse the regex, I will make sure I separately bracket them, although it is not needed.
+  +It would work the same if it were written as "^(.)(.*\\1$|\\1$)"
+  
+
+
+```{r}
+y<- c("bob", "toot", "gag", "oo")
+
+
+str_view(y, "^(.)((.*\\1$)|\\1$)")
+
+```
+
+
+
+
+#### B) Contain a repeated pair of letters (e.g. "church" contains "ch" repeated twice.)  
+
+
+
+The hint on this one is that it asks specifically for a letter. I first developed it as if i were looking for any character
+1. Find the pair of **letters** '([A-Za-z][A-Za-z])' - Note, the letters specification **needs** to be in parentheses
+2. Look through all the text '.*'
+3. Find a match '\\1'
+
+
+
+```{r}
+yy<-c("church", "toto", "yoyo","appropriate")
+
+
+str_view(yy, "([A-Za-z][A-Za-z]).*\\1")
+
+
+```
+
+
+
+
+
+
+
+#### C) Contain one letter repeated in at least three places (e.g. "eleven" contains three "e"s.)  
+
+
+Again, notice the Letters!  
+
+1. Find the first letter '([A-Za-z])'
+2. Look through all the text '.*'
+3. Find a match '\\1'
+4. repeat steps 3 and 4
+
+
+
+
+
+
+```{r}
+z<-c("eleven", "believe", "tomorrow","individual")
+
+
+str_view(z, "([A-Za-z]).*\\1.*\\1")
+
+
+```
+
+
+
+
