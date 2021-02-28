@@ -1,0 +1,433 @@
+---
+title: "Chess Tournament"
+author: "Joshua Hummell"
+date: "2/28/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Overview  
+![](https://raw.githubusercontent.com/jhumms/DATA607/main/chess/Chess.jpg)   
+  
+### The goal of this project is to a chess tournament document into a csv file.     
+#### It doesn't seem like it would be that difficult, but that data currently looks like this:  
+  
+    
+![](https://raw.githubusercontent.com/jhumms/DATA607/main/chess/chess.png)  
+  
+#### The project has a few stipulations for what needs to be included in the file
+1. Player’s Name - Simply, add in their name  
+2. Player’s State - It's where we see 'Num' on the top title  
+3. Player's total Number of Points - the numbers that come after the outcome of the tournamnet    
+4. Player’s Pre-Rating (And Player's ID) - Simply this particular players pre-rating by using their player ID  
+5. Average Pre Chess Rating of Opponents - For all the opponents, you need to get the score for each person and then divide by the total number of games played, which is a max of seven for this tournament.   
+  
+
+#### We will accomplish this in a series of steps which you can find below. 
+1. Reading and Cleaning the data -  we will load the data and make it easy to work with  
+2. Extracting the Data  
+3. Creating a Dataframe  
+  
+  
+  
+  
+## Load the Required Packages  
+```{r message=FALSE}
+library(stringr)
+library(dplyr)
+library("kableExtra")
+```
+  
+
+## Step One
+### Reading the Data  
+Since this is a txt file and we want to read it in as a character file and maintain the line structure, so we want to use 'readLines'.  
+
+
+
+```{r warning=FALSE}
+chess <- readLines("https://raw.githubusercontent.com/jhumms/DATA607/main/chess/tournamentinfo.txt")
+```
+
+```{r}
+# Let's check out the top rows
+paste(head(chess))
+```  
+### Now, there is one more thing we have to do, and that is remove the header from the chess document since we will be creating our own column names later.  
+```{r}
+chess <- chess[-(1:4)]
+```
+  
+And now we are ready for Step Two.
+  
+
+  
+## Step Two  
+### Extracting the Data  
+#### In this section we are going to use some Regex to get all the data we need.  
+A quick note, for the Regex formulas, I made frequent use of the [RegExr Website](https://regexr.com/).
+  
+#### Player ID  
+```{r}
+chess_id <- unlist(str_extract_all(unlist(chess), "\\d{1,2}(?=\\s\\|)"))
+chess_id <- str_trim(chess_id, side = "right")
+chess_id
+```
+  
+
+#### Player Name
+```{r}
+chess_player <- unlist(str_extract_all(unlist(chess), "([[:upper:]]+\\s){2,}"))
+chess_player <- str_trim(chess_player, side = "right")
+chess_player
+```
+
+#### Player's State
+```{r}
+chess_state <- unlist(str_extract_all(unlist(chess), "([[:upper:]]){2}\\s(?=\\|)"))
+chess_state <- str_trim(chess_state, side = "right")
+chess_state
+```
+
+#### Player's Number of Points
+```{r}
+chess_points <- unlist(str_extract_all(unlist(chess), "\\d\\.\\d"))
+chess_points
+```
+
+#### Player's Pre-Rating
+```{r}
+chess_rate <- unlist(str_extract_all(unlist(chess), "(?<!\\>\\s)(?<=\\s{1,2}|\\s\\:)(\\d{3,4}(?=\\s|P))"))
+chess_rate
+```
+
+
+#### Opponents Score  
+For this one, we need to extract all the values and then insert them into a dataframe that we will later add everything to.  
+
+```{r}
+chess_score <- unlist(str_extract_all(unlist(chess), "(\\d{1,}|[[:blank:]]{1})(?=\\|)"))
+# Let's convert all blanks to '0'
+chess_score[chess_score==" "]  <- "0"
+#Now create a DataFrame
+chess_temp <- data.frame(matrix(chess_score, nrow = 64, byrow = T))
+
+##Now remove the columns without data
+chess_temp <- subset(chess_temp, select = 4:10)
+# Coerce the characters to numeric
+chess_temp <- as.data.frame(sapply(chess_temp, as.numeric))
+#Do some final math
+
+```
+
+## Step Three  
+### Creating the Dataframe   
+#### First we need to create an intermediate table to get the values together
+
+```{r}
+chess_table <- data.frame(chess_id,chess_player, chess_state, chess_points, chess_rate)
+chess_final <- 'NA'
+
+chess_int <- cbind(chess_table, chess_temp)
+
+# Let's rename our columns
+colnames(chess_int) <-c("player.id", "player.name", "player.state","player.points", "player.rating","o1","o2","o3","o4","o5","o6","o7")
+
+```
+
+#### Now, let's add in the average pre-score value for the oponents.  
+1. We need to make a new key value pair  (like a Python dictionary)  
+2. We need to add in the new columns for the values  
+3. We need to match the key value pair with the data frame  
+4. We need to turn the NA's to 0 in order to do effective math  
+5. Finally, we need to make sure the values are numeric  
+```{r}
+# Key Value pair
+mat <- chess_int %>% select(player.id,player.rating)
+
+# Create new columns
+chess_int$v1 <- 0
+chess_int$v2 <- 0
+chess_int$v3 <- 0
+chess_int$v4 <- 0
+chess_int$v5 <- 0
+chess_int$v6 <- 0
+chess_int$v7 <- 0
+
+# Match the values!
+chess_int$v1 <- mat$player.rating[match(chess_int$o1, mat$player.id)]
+chess_int$v2 <- mat$player.rating[match(chess_int$o2, mat$player.id)]
+chess_int$v3 <- mat$player.rating[match(chess_int$o3, mat$player.id)]
+chess_int$v4 <- mat$player.rating[match(chess_int$o4, mat$player.id)]
+chess_int$v5 <- mat$player.rating[match(chess_int$o5, mat$player.id)]
+chess_int$v6 <- mat$player.rating[match(chess_int$o6, mat$player.id)]
+chess_int$v7 <- mat$player.rating[match(chess_int$o7, mat$player.id)]
+
+
+#Handle the NAs
+chess_int[is.na(chess_int)] <- 0
+
+# Turn the Values to Numeric
+
+chess_int[, 13:19] <- sapply(chess_int[, 13:19], as.numeric)
+
+
+# Get the final avg score
+chess_int$oponent.avg <- round((rowSums(chess_int[,13:19]) / 7))
+
+```
+
+#### Finally, let's create our final table!
+```{r}
+chess_final <- chess_int %>% select(player.id,player.name,player.state,player.points, player.rating, oponent.avg)
+kable(chess_final, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+  
+#### Now that we have the final table, let's print it out as a CSV.  
+  
+```{r}
+write.csv(chess_final, file = "chess_tournament.csv")
+```
+
+
+
+
+## Extra Credit
+#### let's get the results of each match and compare it to the expoected outcome of the match
+
+
+First, let's get the match results in a nice clean format  
+The process is described here:  
+1. Pull all data in between pipes  
+2. Put that data in a Dataframe  
+3. Remove the unneeded columns  
+4. Remove numeric data from the matrix and add it back as a datframe (it was converted from the sapply function)
+5. Convert the matrix to a dataframe  
+6. Trim the white spaces  
+7. Add in column names  
+8. Remove every other row since it is data not needed ( we need 64 rows)  
+
+
+```{r}
+# 1
+chess_e <- unlist(str_extract_all(unlist(chess), '(?<=\\|)[^|]++(?=\\|)'))
+# 2
+chess_e <- as.data.frame(matrix(chess_e, ncol = 9, byrow = T))
+# 3
+chess_e <- subset(chess_e, select = 3:9)
+# 4
+chess_e <-sapply(chess_e,function(x) gsub("[0-9]","",as.character(x)))
+# 5
+chess_e <- as.data.frame(chess_e)
+# 6
+chess_e<- chess_e %>%  mutate_all(trimws)
+# 7
+colnames(chess_e) <-c("r1","r2","r3","r4","r5","r6","r7")
+# 8
+toDelete <- seq(1, nrow(chess_e), 2)
+chess_e <- chess_e[toDelete,]
+```
+
+Great, now that we have the data we need, let's add it to a larger dataframe that has the all the ratings of each player (what we found above) and merge it with this data.  
+  
+Then we have a couple of things to calculate  
+1. First, we need to merge the data then we need to do some ELO math to compute the the odds for each game. 
+2. We need to compare those odds to the results  
+
+Before we begin, let's go over the formula we need for the ELO ranking system.  
+1. How to predict the outcome of a match: 1/ 1+10^((Rb-Ra)/400)
+ + Basically this is comparing the scores of each player to determine who has the better odds  
+```{r}
+chess_ec <- chess_int %>% select(player.id, player.rating,v1,v2,v3,v4,v5,v6,v7)
+
+chess_full <- cbind(chess_ec, chess_e)
+
+# Turn the Values to Numeric
+
+chess_full[, 2:9] <- sapply(chess_full[, 2:9], as.numeric)
+
+
+
+chess_full$result1 <- 0
+chess_full$result2 <- 0
+chess_full$result3 <- 0
+chess_full$result4 <- 0
+chess_full$result5 <- 0
+chess_full$result6 <- 0
+chess_full$result7 <- 0
+
+
+# I decided to round it two positions to make it easier to read
+chess_full$result1 <- ifelse(chess_full$v1 >0, round((1/ (1+(10^((chess_full$v1-chess_full$player.rating)/400)))*100)),101)
+
+chess_full$result2 <- ifelse(chess_full$v2 >0,round((1/ (1+(10^((chess_full$v2-chess_full$player.rating)/400)))*100)),101)
+
+chess_full$result3 <- ifelse(chess_full$v3 >0,round((1/ (1+(10^((chess_full$v3-chess_full$player.rating)/400)))*100)),101)
+
+chess_full$result4 <- ifelse(chess_full$v4 >0,round((1/ (1+(10^((chess_full$v4-chess_full$player.rating)/400)))*100)),101)
+
+chess_full$result5 <- ifelse(chess_full$v5 >0,round((1/ (1+(10^((chess_full$v5-chess_full$player.rating)/400)))*100)),101)
+
+chess_full$result6 <- ifelse(chess_full$v6 >0,round((1/ (1+(10^((chess_full$v6-chess_full$player.rating)/400)))*100)),101)
+
+chess_full$result7 <- ifelse(chess_full$v7 >0,round((1/ (1+(10^((chess_full$v7-chess_full$player.rating)/400)))*100)),101)
+
+#Now make sure they are numerical
+chess_full[, 17:23] <- sapply(chess_full[, 17:23], as.numeric)
+
+```  
+#### Now that we have all the data we need, we are going to analyze and compare the results to what was the expected outcome. In order to do that we need to learn a little more about the ELO system.   
+The rating system is able to tell you the outcome based on the probability of a win + Draw - loss. So for all of these numbers we need to determine which one is higher. There are more complicated ways to show this, but to keep it simple, I will categorize each range of probability (i.e. 0%-10%) by the highest expected outcome.   
+
+1. 0-30%, there is a higher chance of loss.  
+2. 40-60%, there is a higher chance for a draw.  
+3. 70-100%, there is a higher chance for winning.  
+  
+Thanks to this [Stack Exchange](https://math.stackexchange.com/questions/1303984/take-the-outcome-of-a-draw-in-elo-formula) forum for the odds (although not the only distribution, it's assumption is that all the rankings are accurate to the person).    
+  
+Below, we are going to do several things.   
+1. Calculate the odds, as described above  
+2. Convert the results into math (leaving out everything but W, L, D)  
+3. Compare the the expected outcome vs. actual outcome as Expected, Better, or Worse
+4. Count the results and add it back to the main data frame.  
+
+```{r}
+chess_full$expect1 <- ifelse(chess_full$result1 < 40, 0, 
+                             ifelse(chess_full$result1 <= 60, .5, 
+                                     ifelse(chess_full$result1 <= 100 ,1, NA)))
+
+chess_full$expect2 <- ifelse(chess_full$result2 < 40, 0, 
+                             ifelse(chess_full$result2 <= 60, .5, 
+                                     ifelse(chess_full$result2 <= 100 ,1, NA)))
+
+chess_full$expect3 <- ifelse(chess_full$result3 < 40, 0, 
+                             ifelse(chess_full$result3 <= 60, .5, 
+                                     ifelse(chess_full$result3 <= 100 ,1, NA)))
+
+chess_full$expect4 <- ifelse(chess_full$result4 < 40, 0,
+                             ifelse(chess_full$result4 <= 60, .5, 
+                                     ifelse(chess_full$result4 <= 100 ,1, NA)))
+
+chess_full$expect5 <- ifelse(chess_full$result5 < 40, 0,
+                             ifelse(chess_full$result5 <= 60, .5, 
+                                     ifelse(chess_full$result5 <= 100 ,1, NA)))
+
+chess_full$expect6 <- ifelse(chess_full$result6 < 40, 0, 
+                             ifelse(chess_full$result6 <= 60, .5, 
+                                     ifelse(chess_full$result6 <= 100 ,1, NA)))
+
+chess_full$expect7 <- ifelse(chess_full$result7 < 40, 0, 
+                             ifelse(chess_full$result7 <= 60, .5, 
+                                     ifelse(chess_full$result7 <= 100 ,1, NA)))
+##################################################################################################
+chess_full$res1 <- ifelse(chess_full$r1 == "W", 1, 
+                             ifelse(chess_full$r1 == "D", .5, 
+                                     ifelse(chess_full$r1 == "L" ,0, NA)))
+
+chess_full$res2 <- ifelse(chess_full$r2 == "W", 1, 
+                             ifelse(chess_full$r2 == "D", .5, 
+                                     ifelse(chess_full$r2 == "L" ,0, NA)))
+
+chess_full$res3 <- ifelse(chess_full$r3 == "W", 1, 
+                             ifelse(chess_full$r3 == "D", .5, 
+                                     ifelse(chess_full$r3 == "L" ,0, NA)))
+
+chess_full$res4 <- ifelse(chess_full$r4 == "W", 1, 
+                             ifelse(chess_full$r4 == "D", .5, 
+                                     ifelse(chess_full$r4 == "L" ,0, NA)))
+
+chess_full$res5 <- ifelse(chess_full$r5 == "W", 1, 
+                             ifelse(chess_full$r5 == "D", .5, 
+                                     ifelse(chess_full$r5 == "L" ,0, NA)))
+
+chess_full$res6 <- ifelse(chess_full$r6 == "W", 1, 
+                             ifelse(chess_full$r6 == "D", .5, 
+                                     ifelse(chess_full$r6 == "L" ,0, NA)))
+
+chess_full$res7 <- ifelse(chess_full$r7 == "W", 1, 
+                             ifelse(chess_full$r7 == "D", .5, 
+                                     ifelse(chess_full$r7 == "L" ,0, NA)))
+##################################################################################################
+chess_full[, 24:37] <- sapply(chess_full[, 24:37], as.numeric)
+  
+  
+chess_full$compare1 <- ifelse(chess_full$res1 == chess_full$expect1, "Expected",
+                              ifelse(chess_full$res1 >  chess_full$expect1, "Better","Worse"))
+
+
+chess_full$compare2 <- ifelse(chess_full$res2 == chess_full$expect2, "Expected",
+                              ifelse(chess_full$res2 >  chess_full$expect2, "Better","Worse"))
+
+chess_full$compare3 <- ifelse(chess_full$res3 == chess_full$expect3, "Expected",
+                              ifelse(chess_full$res3 >  chess_full$expect3, "Better","Worse"))
+
+chess_full$compare4 <- ifelse(chess_full$res4 == chess_full$expect4, "Expected",
+                              ifelse(chess_full$res4 >  chess_full$expect4, "Better","Worse"))
+
+chess_full$compare5 <- ifelse(chess_full$res5 == chess_full$expect5, "Expected",
+                              ifelse(chess_full$res5 >  chess_full$expect5, "Better","Worse"))
+
+chess_full$compare6 <- ifelse(chess_full$res6 == chess_full$expect6, "Expected",
+                              ifelse(chess_full$res6 >  chess_full$expect6, "Better","Worse"))
+
+chess_full$compare7 <- ifelse(chess_full$res7 == chess_full$expect7, "Expected",
+                              ifelse(chess_full$res7 >  chess_full$expect7, "Better","Worse"))
+  
+chess_full[, 38:44] <- sapply(chess_full[, 38:44], as.factor)
+
+##################################################################################################
+
+chess_full$player.expected <- apply(chess_full[38:44], 1, function(x) length(which(x=="Expected")))
+
+chess_full$player.better <- apply(chess_full[38:44], 1, function(x) length(which(x=="Better")))
+
+chess_full$player.worse <- apply(chess_full[38:44], 1, function(x) length(which(x=="Worse")))
+
+chess_full[, 45:47] <- sapply(chess_full[, 45:47], as.numeric)
+
+
+chess_full$perc.expected <- round((chess_full$player.expected / (chess_full$player.better+ chess_full$player.expected+chess_full$player.worse)*100))
+
+chess_full$perc.better <- round((chess_full$player.better / (chess_full$player.better+ chess_full$player.expected+chess_full$player.worse)*100))
+
+chess_full$perc.worse <- round((chess_full$player.worse / (chess_full$player.better+ chess_full$player.expected+chess_full$player.worse)*100))
+
+
+##################################################################################################
+extra_crd <- chess_full %>% select(player.id, player.expected, player.better, player.worse,perc.expected, perc.better, perc.worse)
+chess_ec_final <- merge(chess_final,extra_crd,by="player.id")
+kable(chess_ec_final, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+
+```  
+## And finally, let's find out who played as expected, who played better, and who played worse.  
+### Expected  
+```{r}
+
+
+kable(chess_ec_final %>% arrange(desc(perc.expected)), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px") 
+```
+### Better  
+```{r}
+kable(chess_ec_final %>% arrange(desc(perc.better)), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+### Worse    
+```{r}
+kable(chess_ec_final %>% arrange(desc(perc.worse)), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
