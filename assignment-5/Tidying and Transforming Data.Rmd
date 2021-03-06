@@ -1,0 +1,134 @@
+---
+title: "Tidying and Tansforming Data"
+author: "Joshua Hummell"
+date: "03/07/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+```
+
+#### For this assigmnent we have 3 steps:
+1. Create a .CSV file (or optionally, a MySQL database!) that includes all of the information above. You’re encouraged to use a “wide” structure similar to how the information appears above, so that you can practice tidying and transformations as described below.  
+2. Read the information from your .CSV file into R, and use tidyr and dplyr as needed to tidy and transform your data.  
+3. Perform analysis to compare the arrival delays for the two airlines.  
+
+## Step 1 & Step 2  
+#### Since I already created the csv file and published it to Github, we are just going to go ahead and pull it in from Github and take a view. 
+```{r}
+airlines <- read.csv("https://raw.githubusercontent.com/jhumms/DATA607/main/assignment-5/airlines.csv",header = TRUE, sep = ",")
+head(airlines)
+```  
+  
+#### So it has some missing values, the first two column names as well as missing data in the columns and the third row which is empty. Let's fix those complainets.  
+
+1. Blank row - for this we will remove it if it is empty or null  
+  
+```{r}
+airlines <- airlines[!apply(is.na(airlines) | airlines == "", 1, all),]
+```
+  
+2. Rename the columns, and we will make them lowercase as well as make any seperated by a '.' with a '_'  
+
+```{r}
+airlines <- airlines %>% rename(carrier = 1, status = 2)
+airlines <- airlines %>% rename_all(tolower)
+airlines <- rename_with(airlines, ~ tolower(gsub(".", "_", .x, fixed = TRUE)))
+```
+  
+3. Add in any missing data using Zoo's na.locf which adds the first non na above into the na.  
+
+(Unfortunately fill() does not work in this scenario becuase you are working with strings instead of numbers, and thanks to [IRTFM on Stackoverflow for the answer](https://stackoverflow.com/questions/52767323/is-there-a-equivalent-for-the-tidyr-fill-for-strings-in-r))  
+
+```{r}
+airlines[airlines==""] <- NA
+airlines[1] <- lapply(airlines[1], zoo::na.locf)
+```
+  
+Let's take a look at the data now  
+```{r}
+head(airlines)
+```
+  
+Much Better!  
+
+
+#### Now we should be good to go to turn this into long format!  
+```{r}
+library("reshape2")
+melt.airlines <- melt(airlines)
+melt.airlines <- melt.airlines %>% rename(destination = 3, amt = 4)
+head(melt.airlines)
+
+```
+  
+## Step 3  
+### Let's analyze these two and compare arrival delays for these two airlinesby creating a bar chart to see their on time as well as delayed flights.    
+
+
+
+```{r}
+
+ggplot(data=melt.airlines, aes(x=carrier, y=amt, fill=status)) +
+  geom_bar(stat="identity", position=position_dodge())
+```
+  
+#### It looks like AM West has a larger number of flights and also a larger number of delays. But, to be fair, let's compare the overall delays with the total number of flights for each carrier.   
+
+```{r}
+delays <- melt.airlines %>% select(carrier, status, amt) %>% group_by(carrier, status) %>% summarise(amt = sum(amt))
+```
+  
+#### Then we need to cast it so we can get delayed next to on time  
+```{r}
+cast.delays <- dcast(delays, carrier~...)
+cast.delays <- rename_with(cast.delays, ~ gsub(" ", "_", .x, fixed = TRUE))
+```
+  
+#### Finally we need to get the percent of delayed by the total number of flights and show the results!   
+
+```{r}
+cast.delays <- cast.delays %>% mutate(perc_delayed = delayed/(delayed + on_time))
+
+
+ggplot(data=cast.delays, aes(x=carrier, y=perc_delayed)) +
+  geom_bar(stat="identity")
+```
+
+
+#### It looks like Alaska has a higher number flights overall, but how about analyzing the delayed flights by destinations?  
+
+#### Let's begin by casting the data so we can see on time and delayed by destination  
+
+```{r}
+cast.airlines <- dcast(melt.airlines, carrier+destination~...)
+
+cast.airlines <- rename_with(cast.airlines, ~ gsub(" ", "_", .x, fixed = TRUE))
+```
+
+#### Now let's calculate the percent of time a flight to a destination was delayed  
+```{r}
+cast.airlines <- cast.airlines %>% mutate(perc_delayed = round(delayed/((on_time+ delayed)), 2))
+
+on_time_airlines<- cast.airlines %>% select(carrier, destination, perc_delayed)
+```
+
+#### And let's graph it  
+
+```{r}
+ggplot(data=on_time_airlines, aes(x=destination, y=perc_delayed, fill=carrier)) +
+  geom_bar(stat="identity", position=position_dodge())
+```
+
+#### As the reader can see, AM WEST has a higher percentage of delays for each destination, but from what we saw above, Alaska has a higher percentage of delayed flights.  
+
+
+
+
+
+
+
+
