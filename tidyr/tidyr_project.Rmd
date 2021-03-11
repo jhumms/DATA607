@@ -1,0 +1,275 @@
+---
+title: "Tidyr"
+author: "Joshua Hummell"
+date: "03/14/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Overview  
+   
+  
+### The goal of this project is to work on three messy datasets given to us by our classmates in the previous discussion by tidying them and running the requested analysis on them.   
+  
+#### For this assignment I have chosen the following three datasets.  
+1. My own on NBA Games for the 2020-2021 season (until March, 4, 21), which I ask  if there is an advantage to having rest in between games and also if there is a homecourt advantage. 
+  + [Data found here](https://www.basketball-reference.com/leagues/NBA_2021_games.html)
+2. Vic Chan's Canadian Unemployment chart where there is no explicit analysis, but I will see the provinces unemployment rates for the past year.
+  + [Data found here](https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410028703)
+3. Claire Meyer's IMDB Analysis in which she asks whether age has an impact on a movies rating (older the better)
+  + [Data found here](https://www.imdb.com/chart/top/?ref_=nv_mv_250) 
+  
+
+#### We will accomplish this project in a series of steps which you can find below. 
+1. Downloading the data/copying it into a spreadsheet (as is)  
+2. Uploading the spreadsheet to Github for access by anyone  
+3. Pull each one in and tidy the data  
+4. Run an analysis  
+  
+  
+## Load the Required Packages  
+```{r message=FALSE}
+library('tidyverse')
+library("lubridate")
+library("kableExtra")
+```
+
+
+# NBA  
+  
+```{r message=FALSE}
+nba <- read.csv("https://raw.githubusercontent.com/jhumms/DATA607/main/tidyr/basketball.csv",header = TRUE, sep = ",")
+```
+  
+let's begin!  
+
+1. Date - all we need to use is lubridate to parse the date  
+```{r}
+nba$Date <- mdy(nba$Date)
+```
+  
+2. Now we need to create a new column based on who won
+```{r}
+nba$winner <-  ifelse(nba$PTS > nba$PTS.1, "home", "visitor")
+```
+  
+  
+  
+3. Let's keep the following columns then add in an id column and split them
+```{r}
+nba <- nba %>% select(Date, Visitor.Neutral, PTS, Home.Neutral, PTS.1, winner)
+nba$game_id <- seq.int(nrow(nba))
+
+home <- nba %>% select(game_id, Date, PTS, Home.Neutral, winner)
+away <- nba %>% select(game_id, Date, PTS.1, Visitor.Neutral,  winner)
+```
+  
+4. Now for each we are going to rename the columns and add in one to say if there were the home team or not.
+  
+```{r}
+home <- home %>% rename(date=Date, score=PTS, team = Home.Neutral)
+away <- away %>% rename(date=Date, score=PTS.1, team = Visitor.Neutral)
+
+home$court <- "home"
+away$court <- "visitor"
+```
+
+5. Finally, let's add them back together and add in an id column and reorganize  
+
+```{r}
+nba <- rbind(home, away)
+nba$id <- seq.int(nrow(nba))
+
+nba_tidy <- nba %>% select(id, date, team, game_id, score, court, winner) 
+```
+
+Finally, Tidy!  
+```{r}
+kable(nba_tidy, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+  
+And it looks much more tidy now! It's time for the analyses.  
+1. Find out if there was a homecourt advantage  
+2. Find out if rest in between games gave an advantage  
+
+
+### Homecourt Advantage
+Let's find out if there is such a thing as the homecourt advantage.   
+  
+```{r}
+nba$winner <- as.factor(nba$winner)
+kable(nba %>% count(court = nba$winner), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+
+```
+  
+The data shows that there is not any homecourt advantage, but, since this is 2020-2021 season and there are very few fans in the audience, maybe it was the fan-base that motivated extra performance. For this I would download all the NBA games from the past ~20 years and see if it makes a difference.  
+
+### Rest Advantage  
+This analysis is a bit more complicated, for it we need to measure the time in between games and then see if that helped them win. 
+1. We need to create a table for all the teams
+2. We need to calculate the time in between games and then match it back to the main table
+
+In my opinion the easiest way to do this is create a loop for each team that subtracts the days from each other.   
+
+Thanks to [greghk](https://stackoverflow.com/questions/39514174/adding-new-column-with-diff-function-when-there-is-one-less-row-in-r) for the tip on subtracting rows  
+
+```{r}
+nba_time <- data.frame()
+
+
+for (i in unique(nba$team)) 
+{
+  team_name <- nba %>% 
+    select(id, date) %>% 
+    filter(nba$team == i) %>% 
+    arrange(desc(date))
+  
+  team_name <- within(team_name, rest_days <- c(0,diff(date)))
+  team_name$rest_days <- abs(team_name$rest_days) 
+  
+  nba_time <- rbind(nba_time, team_name)
+}
+
+nba_time <- nba_time %>% select('id', 'rest_days')
+
+nba <- inner_join(nba_time, nba, by = c('id'))
+
+```
+
+
+
+And now it is time for an analysis!  
+First, let's see what typical days off look like. 
+
+```{r}
+kable(nba %>% count(court = nba$rest_days), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+It looks like very few teams have more than three days of rest. So we will clump everyone over three days as 3 and also add in something to show it they won or lost. 
+```{r}
+nba$rest <- ifelse(nba$rest_days == 0 & nba$winner == nba$court, "won_zero", 
+                   ifelse(nba$rest_days == 1 & nba$winner == nba$court, "won_one", 
+                   ifelse(nba$rest_days == 2 & nba$winner == nba$court, "won_two",
+                   ifelse(nba$rest_days > 2 & nba$winner == nba$court, "won_three",
+                   ifelse(nba$rest_days == 0 & nba$winner != nba$court, "lost_zero", 
+                   ifelse(nba$rest_days == 1 & nba$winner != nba$court, "lost_one", 
+                   ifelse(nba$rest_days == 2 & nba$winner != nba$court, "lost_two",
+                   ifelse(nba$rest_days > 2 & nba$winner != nba$court, "lost_three",
+                   NA))))))))
+
+
+kable(nba %>% count(court = nba$rest)%>% arrange((court)), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+There are some minor differences between having two and three days off, but overall, it does not seem like it would be a factor that determines who wins the game.   
+
+
+# Canada Unemployment  
+  
+```{r message=FALSE}
+canada <- read.csv("https://raw.githubusercontent.com/jhumms/DATA607/main/tidyr/canada_unemplyment.csv",header = TRUE, sep = ",")
+```
+This is truly an ugly data set, but fortunately, looking at all the columns, all we need are the date, location, the value, and the labor type (in this dataframe, the unemployment rate is already determined, we just have to pull it out).  
+
+
+```{r}
+canada_un <- canada %>% select(1,2,VALUE,Labour.force.characteristics)
+```
+And that should make it Tidy!  
+```{r}
+kable(canada_un, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+
+
+```{r}
+colnames(canada_un) <- c("date", "location", "unemployment_rate","characteristics")
+canada_un <- canada_un %>% select_all() %>% filter(characteristics == "Unemployment rate")
+```
+
+
+
+```{r}
+ggplot(data=canada_un, aes(x=date, y=unemployment_rate, group = location )) +
+  geom_line(aes(color=location)) +
+  geom_point(aes(color = location))
+```
+
+And here is the graph showing the unemployment across the different provinces and Canada as a whole.  
+
+It looks like Canadian unemployment has gone down overall, but it is trending upwards, it will be interesting to see how it turned out once the data up until March is out.   
+
+# IMDB Top 250  
+  
+```{r message=FALSE}
+imdb <- read.csv("https://raw.githubusercontent.com/jhumms/DATA607/main/tidyr/imdb_top.csv",header = FALSE, sep = ",")
+```
+
+
+
+Another ugly dataframe and this one came without headers, but we will take care of that in a bit.   
+Here's the process for this dataframe:  
+  
+1. Split the first column into rank, name, and year
+2. Analyze for the decades with highly rated movies.  
+
+
+```{r}
+imdb <- imdb %>% separate(1, into = c("rank", "name"), sep = "(?<=\\d)\\.")
+imdb <- imdb %>% separate(2, into = c("name", "year"), sep = "\\(")
+```
+  
+Let's rename the columns, clean up the year column, and then make sure all the columns are the correct data type.  
+
+```{r}
+colnames(imdb) <- c("rank", "name", "year", "rating")
+
+imdb <- imdb %>% mutate(year = as.character(gsub(")","",year)))
+imdb$year <- ymd(imdb$year, truncated = 2L)
+imdb$rank <- as.numeric(imdb$rank)
+```
+  
+Finally, Tidy!
+```{r}
+kable(imdb, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+  
+  
+Let's make this easy to look at and group the movies by decade and then let's see how many movies there are in the top 250 by decade. Claire had originally thought that there would be a lot of older movies which were highly ranked because they became classics.    
+  
+```{r}
+imdb$decade <- floor_date(imdb$year, years(10))
+
+
+kable(imdb %>% select(decade, rating) %>% group_by(decade) %>% summarise(number_movies = n())%>% arrange((number_movies)), "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+
+```
+  
+Interestingly, it seems that the past four decades have a lot of movies in the top 250. This may actually show bias in that younger people who use the internet are more likely to rate movies online (to check this out we would need to get the demographics of reviewers on IMDB).  
+  
+Let's see which decades rank the highest.  
+  
+  
+```{r}
+movie <- imdb %>% select(decade, rating) %>% group_by(decade) %>% summarise(avg_rating = mean(rating)) %>% arrange(desc(avg_rating))
+
+kable(movie, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+
+
+```
+  
+
+Let's see what it looks like graphed. 
+```{r}
+ggplot(data=movie, aes(x = reorder(decade, -avg_rating), y=avg_rating)) +
+  geom_bar(stat='identity') +
+  coord_flip() +
+  labs(title="Average Rating of Movies by Decade",
+        x ="Decade", y = "Average Rating")
+```
+
+
+This actually shows that the movies from the 90s are the best! Since these are the movies from my childhood and I also am one of the first generations who has widespread access to the internet, I'm going to guess that the user base is younger, and that is also shown by the 2000s being in third. However, it is interesting that 1960-1980 and 1990-2010 are the top four. Must have been good years for movies!  
+  
+  
+  
+  
