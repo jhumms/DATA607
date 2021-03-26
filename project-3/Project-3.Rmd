@@ -1,0 +1,215 @@
+---
+title: "Project 3"
+author: "E,J,J,E"
+date: "3/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+#### We interpreted the project goal as simply to find out what skills are most sought out for Data Scientists. We figured other teams would be more focused on US results (as is expected), but we wanted to compare the industry with our friends in the UK.  
+
+## The Plan  
+1. we are going to extract the data from the HTML from the UKs most common job board website, which is [https://www.reed.co.uk/](https://www.reed.co.uk/).   
+2. We are going to Tidy the data  
+3. Create an analysis about the data  
+```{r message=FALSE}
+library(rvest)
+library(tidyverse)
+library(stringr)
+```
+
+
+
+### Step One
+
+1. Pull in the HTML 
+
++ The first thing to do is check out the job listing page itself. For these purposes we are going to run only the first page, and check out what we have. I'm not going to show it here because it will take up way to much space, it is a lot of HTML.  
+
+
+```{r}
+reed_data <- read_html("https://www.reed.co.uk/jobs/data-scientist-jobs-in-london?fulltime=True&proximity=30")
+```
+  
+
+2. Get the total number of jobs and how many are on this page.  
+
++ Since we are going to be looking across multiple pages, we need the count of how many jobs we are currently looking at and how many there are in total. This way we can build a loop that will pull from all pages as long as there are jobs.  
+```{r}
+job <- reed_data %>% 
+  html_nodes("div") %>% 
+  html_nodes(xpath = '//*[@class="page-counter"]')%>% 
+  html_text() %>%
+  strsplit(" ")
+
+current_job <- as.numeric(job[[1]][27])
+total_job <- as.numeric(job[[1]][29])
+paste('On this page there are', current_job, 'jobs out of a total of', total_job, "jobs")
+```
+
+3. Get the jobs URLS
+- Our plan is to scrape all the jobs pages individually
++ When I tried to scrape this page there were only partial descriptions.    
+
++ So we are going to create a loop that will pick out all the 'data-ids', which are used to identify the post page in the url.   
+
+
+First we need to get the first page.  
+```{r}
+job_url <- reed_data %>% 
+  html_nodes("div") %>% 
+  html_nodes(xpath = 'a')%>% 
+  html_attr('data-id')
+job_url <- job_url[!is.na(job_url)]
+head(job_url)
+```
+
+Now we can get the rest of the pages 
+```{r}
+# We already got page one, so we want to start it out on page 2
+n_page=2
+
+start_time <- Sys.time()
+
+while (current_job < total_job){
+    # This will concatenate the url depending on the page
+    p = str_c('https://www.reed.co.uk/jobs/data-scientist-jobs-in-london?pageno=',n_page,'&fulltime=True&proximity=30', sep="")
+    URL_p = read_html(p)
+    
+    # This will get the url
+    url <- URL_p %>% 
+      html_nodes("div") %>% 
+      html_nodes(xpath = 'a')%>% 
+      html_attr('data-id')
+    url <- url[!is.na(url)]
+    
+    # This appends the data together
+    job_url <- append(job_url, url)
+    
+    # This gets the new job count and changes current job to that number
+    job <- URL_p %>% html_nodes("div") %>%  html_nodes(xpath = '//*[@class="page-counter"]')%>% html_text() %>% strsplit(" ")
+    current_job <- as.numeric(job[[1]][27])
+
+    # This tells us to go to the next page
+    n_page <- n_page + 1
+    
+}
+
+end_time <- Sys.time()
+paste("There are now", current_job, "jobs out of a total of", total_job, "jobs, and it took" ,round(end_time - start_time), "seconds to complete.")
+```
+  
+4. Now that we have all the urls, we are going to crawl each page and scrape the data and add the data from each page to a data frame.  
+- Create the data frame  
+
+```{r}
+all_jobs <- data.frame(description=character(),
+                       position=character(),
+                       posted=as.Date(character()),
+                       salary=character(), 
+                       location=character(),
+                       contract=character(),
+                       company=character(),
+                       company_type=character(),
+                       industry=character()) 
+
+```
+
+- Now all we have to do is create a loop that will scrape this information off of each page and fill it into the dataframe.  
+```{r warning=FALSE}
+start_time <- Sys.time()
+
+for (i in unique(job_url)) {
+  p = str_c('https://www.reed.co.uk/jobs/data-scientist/',i, sep="")
+  URL_p = read_html(p)
+  
+  
+ # Let's get the description
+  Desc <- URL_p %>% html_nodes("[itemprop='description']") %>%
+            html_text()
+  Desc <- str_trim(Desc, side = "left")
+
+  # Let's get the position
+  Pos <- URL_p %>% html_node("title") %>%
+            html_text()
+  
+  # Let's get the posted date
+  Post <- URL_p %>% html_nodes("[itemprop='datePosted']") %>%
+            html_attr('content')
+  
+  # Let's get the salary
+  Sal <- URL_p %>% html_nodes("[data-qa='salaryLbl']") %>%
+            html_text()
+  Sal <- str_trim(Sal, side = "left")
+  
+  # Let's get the location
+  Loc <- URL_p %>% html_nodes("[data-qa='regionLbl']") %>%
+            html_text()
+  
+  # Let's get the contract
+  Cont <- URL_p %>% html_nodes("[data-qa='jobTypeMobileLbl']") %>%
+            html_text()
+  
+  # Let's get the company name
+  Comp <- URL_p %>% html_nodes(css ="[itemprop='hiringOrganization']") %>%
+            html_nodes(css ="[itemprop='name']") %>%
+            html_text() 
+  Comp <- str_trim(Comp, side = "left")
+  
+  # Let's get the company type. Since it is in the Javascript, we need to use regex to extract the value
+  Compt <- URL_p %>% str_extract("(jobRecruiterType: )'(\\w+\\s\\w+\\s\\w+|\\w+\\s\\w+|\\w+|\\s)") %>%
+      str_extract("(?<=\\')\\D+") 
+  
+  # Let's get the Industry. Since it is in the Javascript, we need to use regex to extract the value
+  Ind <- URL_p %>% str_extract("(jobKnowledgeDomain: )'(\\w+\\s\\w+\\s\\w+|\\w+\\s\\w+|\\w+|\\s)") %>%
+      str_extract("(?<=\\')\\D+") 
+  
+  temp <- c(Desc, Pos, Post, Sal, Loc, Cont, Comp, Compt, Ind)
+  
+  all_jobs <- rbind(temp, all_jobs)
+}
+
+end_time <- Sys.time()
+paste("Your dataframe has been built and it took",round(end_time - start_time), "minutes to complete.")
+```
+
+- Now let's rename the columns  
+```{r}
+colnames(all_jobs) <- c("description", "postion","posted","salary","location","contract","company","company_type","industry") 
+
+```
+And now, on to tidying!  
+
+```{r}
+write.table(all_jobs,"C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Project 3/all-jobs_pipe.csv", row.names = FALSE, sep = "|")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
