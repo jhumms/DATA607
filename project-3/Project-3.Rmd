@@ -19,17 +19,15 @@ knitr::opts_chunk$set(echo = TRUE)
 4. Run  basic NLP on the descriptions
 
 ### Load necesary packages  
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 library(rvest)
 library(tidyverse)
 ```
 
 
 
-### Step One
-
-1. Pull in the HTML  
-- Joshua Hummell
+### Step One - Pull in the HTML  
+#### Joshua Hummell
 
 + The first thing to do is check out the job listing page itself. For these purposes we are going to run only the first page, and check out what we have. I'm not going to show it here because it will take up way to much space, it is a lot of HTML.  
 
@@ -188,18 +186,18 @@ paste("Your dataframe has been built and it took",round(end_time - start_time), 
 colnames(all_jobs) <- c("description", "position","posted","salary","location","contract","company","company_type","industry", "url") 
 
 ```
-And now, on to tidying!  
+  
+##### And now, on to tidying!  
 
 
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### Step Two - Tidying the Data
-- Euclides N. Rodriguez
+#### Euclides N. Rodriguez
 
 1. Remove all rows where data is broken from being a 'featured' job
 ```{r}
 clean_jobs <- all_jobs
-
 
 clean_jobs <- clean_jobs %>% filter(!grepl("Luton|Wimbledon|London|Enfield Town",salary))
 ```
@@ -217,14 +215,13 @@ clean_jobs$position <- str_trim(clean_jobs$position)
 ```{r warning=FALSE}
 clean_jobs <- clean_jobs %>% separate(salary, into = c("min.salary", "max.salary"), sep = "-")
 
-
-#Extract_Numeric was a good function to extract the salary value.  Regex was not necessary
+#Regex was not necessary
 clean_jobs <- clean_jobs %>% mutate(Min.Salary.Lbs = readr::parse_number(as.character(min.salary)))
 
 clean_jobs <- clean_jobs %>% mutate(Max.Salary.Lbs = readr::parse_number(as.character(max.salary)))
 
 #Was not able to figure out regex where I can identify the first space only. 
-#Used '0_' to seperate text and numbers in the max.salary column
+#Used '0_' to separate text and numbers in the max.salary column
 clean_jobs <- clean_jobs %>% separate(max.salary, into = c("X1", "X2"), sep = "0 ")
 
 clean_jobs <- clean_jobs %>% select(-min.salary, -X1)
@@ -239,12 +236,12 @@ tidy_jobs <- clean_jobs %>% relocate(Min.Salary.Lbs, .after = c(3)) %>%
   rename( 'Salary.Period' = c(6)) %>%
   select(-'X4', -'X5')
 ```
-
-And on to the analysis!
+  
+##### And on to the analysis!
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### Step Three - Analyizing the Data
-- Jie Zou  
+#### Jie Zou  
 
 
 ```{r load-packages, message=FALSE}
@@ -307,7 +304,7 @@ datatable(b)
 *What are the major types and corresponding ratio of these companies?*
 
 - The majority type of job posting companies is recruitment consultancy  
-```{r}
+```{r warning=FALSE}
 library(scales)
 c<-df %>% 
   count(company_type) %>%
@@ -354,12 +351,13 @@ ggplot(d2, aes(x = location, y = company)) +
   geom_point(aes(color = location)) + 
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
-And, finally, on to NLP!
+  
+##### And, finally, on to NLP!
 
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### Step Three - Natural Language Processing
-- Evan McLaughlin
+#### Evan McLaughlin
   
 
 #### Overview
@@ -367,7 +365,7 @@ Below, we undertook some NLP processes to distill the job descriptions down to a
 Nevertheless, it's useful to learn about other in-demand skills, so we filtered out Data Science and Machine Learning from our dataset in order to better visualize other popular skills. "Computer Science," "Data Analytics," and the ever-important "Communication Skills" topped the list of sought-after characteristics in London-area Data Scientist job descriptions. We've used some helpful graphics to help illustrate our findings below.
 
 Load the packages  
-```{r warning=FALSE}
+```{r warning=FALSE, message=FALSE}
 library(RColorBrewer)
 library('wordcloud2')
 library(openintro)
@@ -461,8 +459,8 @@ a <- 30
 data <- united_count
 Results<-dplyr::filter(data, data[,2]>a)
 colnames(Results)<-c("term", "frequency")
-ggplot2::ggplot(Results, aes(x=term, y=frequency, fill=term)) + geom_bar(width = 0.75,  stat = "identity", colour = "black", size = 1) + coord_polar(theta = "x") + xlab("") + ylab("") + ggtitle("Term Frequency (min: 30)") + theme(legend.position = "none") + labs(x = NULL, y = NULL)
-plotly::ggplotly(ggplot2::ggplot(Results, aes(x=term, y=frequency, fill=term)) + geom_bar(width = 0.75, stat = "identity", colour = "black", size = 1) + 
+ggplot2::ggplot(Results, aes(x=reorder(term, -frequency), y=frequency, fill=term)) + geom_bar(width = 0.75,  stat = "identity", colour = "black", size = 1) + coord_polar(theta = "x") + xlab("") + ylab("") + ggtitle("Term Frequency (min: 30)") + theme(legend.position = "none") + labs(x = NULL, y = NULL)
+plotly::ggplotly(ggplot2::ggplot(Results, aes(x=reorder(term, -frequency), y=frequency, fill=term)) + geom_bar(width = 0.75, stat = "identity", colour = "black", size = 1) + 
 xlab("") + ylab("") + ggtitle("Word Frequency (min: 30)") + theme(legend.position = "none") + labs(x = NULL, y = NULL) + theme(plot.subtitle = element_text(vjust = 1), plot.caption = element_text(vjust = 1), axis.text.x = element_text(angle = 90)) + theme(panel.background = element_rect(fill = "honeydew1"), plot.background = element_rect(fill = "antiquewhite")))%>% config(displaylogo = F) %>% config(showLink = F)
 ```
 
@@ -477,8 +475,8 @@ b <- 100
 data2 <- united_count
 Results2<-dplyr::filter(data2, data2[,2]>a, data2[,2]<b )
 colnames(Results2)<-c("term", "frequency")
-ggplot2::ggplot(Results2, aes(x=term, y=frequency, fill=term)) + geom_bar(width = 0.75,  stat = "identity", colour = "black", size = 1) + coord_polar(theta = "x") + xlab("") + ylab("") + ggtitle("Term Frequency (min: 30, max: 100)") + theme(legend.position = "none") + labs(x = NULL, y = NULL)
-plotly::ggplotly(ggplot2::ggplot(Results2, aes(x=term, y=frequency, fill=term)) + geom_bar(width = 0.75, stat = "identity", colour = "black", size = 1) + xlab("") + ylab("") + ggtitle("Word Frequency (min: 30, max: 100)") + theme(legend.position = "none") + labs(x = NULL, y = NULL) + theme(plot.subtitle = element_text(vjust = 1), plot.caption = element_text(vjust = 1), axis.text.x = element_text(angle = 90)) + theme(panel.background = element_rect(fill = "honeydew1"), plot.background = element_rect(fill = "antiquewhite")))%>% config(displaylogo = F) %>% config(showLink = F)
+ggplot2::ggplot(Results2, aes(x=reorder(term, -frequency), y=frequency, fill=term)) + geom_bar(width = 0.75,  stat = "identity", colour = "black", size = 1) + coord_polar(theta = "x") + xlab("") + ylab("") + ggtitle("Term Frequency (min: 30, max: 100)") + theme(legend.position = "none") + labs(x = NULL, y = NULL)
+plotly::ggplotly(ggplot2::ggplot(Results2, aes(x=reorder(term, -frequency), y=frequency, fill=term)) + geom_bar(width = 0.75, stat = "identity", colour = "black", size = 1) + xlab("") + ylab("") + ggtitle("Word Frequency (min: 30, max: 100)") + theme(legend.position = "none") + labs(x = NULL, y = NULL) + theme(plot.subtitle = element_text(vjust = 1), plot.caption = element_text(vjust = 1), axis.text.x = element_text(angle = 90)) + theme(panel.background = element_rect(fill = "honeydew1"), plot.background = element_rect(fill = "antiquewhite")))%>% config(displaylogo = F) %>% config(showLink = F)
 ```
 
 
@@ -487,7 +485,7 @@ plotly::ggplotly(ggplot2::ggplot(Results2, aes(x=term, y=frequency, fill=term)) 
 c <- 10
 d <- 600
 Results3<-dplyr::filter(data2, data2[,2]>c, data2[,2]<d)
-wordcloud2(Results3, color = "random-light", backgroundColor = "grey", size = 1.75)
+wordcloud2(Results3, color = "random-light", backgroundColor = "grey", size = .75)
 ```
 
 
