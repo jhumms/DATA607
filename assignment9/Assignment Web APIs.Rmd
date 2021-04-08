@@ -1,0 +1,123 @@
+---
+title: "Assigment 9"
+author: "Joshua Hummell"
+date: "4/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE}
+#install.packages('httr')
+#install.packages('jsonlite')
+library('jsonlite')
+library('httr')
+library('stringr')
+library('tidyverse')
+library('lubridate')
+library("kableExtra")
+```
+
+```{r include=FALSE}
+key <- 'ciQQ1Tipxs3iA9GJ8rXa9WXk4GHcBTZL'
+key2 <- 'HQAkLpV2K1ddJm8g1Qzfuj9Nk8vIgSKg'
+```
+
+
+### Today's task is to choose one of the New York Times APIs, construct an interface in R to read in the JSON data, and transform it into an R DataFrame.  
+
+#### I like books, so I will use the NYT Books API, which provides information about book reviews and The New York Times Best Sellers lists. 
+
+First things first, let's see if my key works and if we can get a list of the lists (I kept my key hidden)  
+```{r}
+url<- str_c('https://api.nytimes.com/svc/books/lists/names.json?api-key=',key, sep="")
+book_options <- GET(url)
+book_text <- content(book_options, "text")
+
+book_list <- fromJSON(book_text)
+
+book_df <- book_list$body$results
+
+book_df %>% select(list_name, list_name_encoded, oldest_published_date) %>% arrange(oldest_published_date)
+```
+
+  
+I want to use the oldest list to get the most results, so I will pull in hardcover fiction books.  
+- Unfortunately, the NYT only gives you the list result for the current week, so we will make a loop that gets all previous data. 
+- I noticed with the NYT list that it is published every Sunday, so to get every week, all we need to do is use lubridate to subtract 7 days on each loop until it reaches the earliest day, which is June, 6, 2020.  
+
+```{r message=FALSE}
+
+early_date <- as.Date('2008-06-08')
+cur_date <- as.Date('2021-04-04')
+result <- 0
+
+
+#let's initialize the dataframe
+url_loop <- str_c('https://api.nytimes.com/svc/books/v3/lists/',cur_date, '/hardcover-fiction.json?api-key=', key, sep="")
+books <-  GET(url_loop)
+hardcover_text <- content(books, "text")
+hardcover_list <- fromJSON(hardcover_text)
+hardcover_df <- hardcover_list$results$books
+# select relevant columns
+hardcover_df <- subset(hardcover_df, select = 1:18)
+## add in the date
+hardcover_df$date <- cur_date
+final_df <- hardcover_df
+
+
+## let's measure the time
+start_time <- Sys.time()
+
+
+#let's run the loop
+while (cur_date > early_date){
+  
+    cur_date <- cur_date - 7
+    
+    url_loop <- str_c('https://api.nytimes.com/svc/books/v3/lists/',cur_date,'/hardcover-fiction.json?api-key=', key, sep="")
+    books <-  GET(url_loop)
+    if (!http_error(books)) {
+      hardcover_text <- content(books, "text")
+
+      hardcover_list <- fromJSON(hardcover_text)
+
+      hardcover_df <- hardcover_list$results$books
+      
+      # select relevant columns
+      hardcover_df <- subset(hardcover_df, select = 1:18)
+      ## add in the date
+      hardcover_df$date <- cur_date
+      
+    
+      if (is.data.frame(hardcover_df) && nrow(hardcover_df)==0) {
+          paste("skipped")
+      } else {
+         final_df <- rbind(final_df, hardcover_df)
+      }
+    } else {
+      paste("error")
+    }
+    
+    
+    
+    result <-  result + 1
+    
+  
+  
+  
+}
+
+end_time <- Sys.time()
+paste("The code found",result, "weeks of hardcover best sellers and it took about", round(end_time - start_time, 2), "mins to complete.")
+
+```
+
+Et voila!
+
+```{r}
+kable(final_df, "html") %>% kable_styling("striped") %>% scroll_box(width = "100%", height = "350px")
+```
+
