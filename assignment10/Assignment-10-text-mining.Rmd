@@ -1,0 +1,228 @@
+---
+title: "Text Mining"
+author: "Joshua Hummell"
+date: "4/17/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Today's Assignment is to work on chapter two of [Welcome to Text Mining with R](https://www.tidytextmining.com/index.html) and extend the code in two ways:  
+1. Work with a different corpus of your choosing, and  
+2. Incorporate at least one additional sentiment lexicon (possibly from another R package that you’ve found through research).  
+
+The code can be found in [Chapter Two](https://www.tidytextmining.com/sentiment.html) of the book.  
+
+
+Citation: 
+*    Title: Sentiment analysis with tidy data
+*    Author:  Julia Silge and David Robinson
+*    Date: 4/6/21
+*    Code version: a912425
+*    Availability: [https://github.com/dgrtwo/tidy-text-mining/blob/master/02-sentiment-analysis.Rmd](https://github.com/dgrtwo/tidy-text-mining/blob/master/02-sentiment-analysis.Rmd)
+
+
+#### Step one  
+The first thing we are going to need to do is install the sentiment datasets  
+
+```{r message=FALSE}
+library(tidytext)
+#install.packages('textdata')
+library('textdata')
+get_sentiments("afinn")
+```
+
+```{r message=FALSE}
+get_sentiments("bing")
+```
+
+```{r message=FALSE}
+
+get_sentiments("nrc")
+```
+
+
+The next step is to pick an author. I like F. Scott Fitzgerald, and as a cynical writer, I want to see if the sentiment analysis picks up on that. 
+I will download the books from Gutenberg (the ones out of copyright at least).  
+
+```{r}
+library(stringr)
+#install.packages('gutenbergr')
+library('gutenbergr')
+
+## This shows us the works by F Scott
+gutenberg_works(str_detect(author, "Fitzgerald, F. Scott"))
+
+paradise <- gutenberg_download(805)
+paradise$book <- 'This Side of Paradise'
+
+flappers <- gutenberg_download(4368)
+flappers$book <- 'Flappers and Philosophers'
+
+tales <- gutenberg_download(6695)
+tales$book <- 'Tales of the Jazz Age'
+
+beautiful <- gutenberg_download(9830)
+beautiful$book <- 'The Beautiful and Damned'
+
+#this one wasn't shown in the dataset, so I had to find it online
+gatsby <- gutenberg_download(64317)
+gatsby$book <- 'The Great Gatsby'
+
+
+books <- rbind(
+                paradise,
+                flappers,
+                tales,
+                beautiful,
+                gatsby
+                )
+
+```
+
+
+
+Now that we have the books in a dataframe, let's add in line number and chapter number for each word.  
+```{r}
+
+library(dplyr)
+
+
+tidy_books <- books %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+```
+
+Let's see how this looks and get all the angry/bitter words that are used in the Great Gatsby  
+```{r}
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "anger")
+
+tidy_books %>%
+  filter(book == "The Great Gatsby") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+
+
+Now we can assign a sentiment for every 50 since these books are typically smaller than the books of Jane Austen   
+```{r}
+library(tidyr)
+
+f_scott_sentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 50, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+Let's graph the results  
+```{r}
+library(ggplot2)
+
+ggplot(f_scott_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+I'm curious, did F. Scott become more cynical over time? 
+```{r}
+f_scott_sentiment %>% group_by(book) %>% summarise(total_sentiment = sum(sentiment)) %>% arrange(desc(total_sentiment))
+```
+I would have thought yes, but according to this model, F. Scott actually became less cynical over time. His two early books being the most negative.  
+
+
+
+
+
+Now, let's look at the Great Gatsby individually  
+```{r}
+great_gastby <- tidy_books %>% 
+  filter(book == "The Great Gatsby")
+```
+
+
+Let's see how all the models compare when looking at the book  
+```{r}
+afinn <- great_gastby %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  great_gastby %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  great_gastby %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+And let's see how that looks mapped out 
+```{r}
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+
+
+
+
+And let's add a wordcloud to see the most popular words in the book  
+```{r}
+library(wordcloud)
+
+great_gastby %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+```{r}
+library(reshape2)
+
+great_gastby %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
