@@ -1,0 +1,59 @@
+---
+title: "Recommender Systems"
+author: "Joshua Hummell"
+date: "4/22/2021"
+output: html_document
+---
+
+# Google.com
+[Google.com](https://www.kroger.com/) is the king of the web. Undeniably, it has become the go to place for searching the internet for [more than half the world's population](https://review42.com/resources/google-statistics-and-facts/#:~:text=The%20four%20billion%20Google%20users,of%20the%20entire%20world%20population). However, I am going to talk about one of the often more overlooked tools that Google has, the Play Store, used by over [2 Billion people on Android](https://www.theverge.com/2019/5/7/18528297/google-io-2019-android-devices-play-store-total-number-statistic-keynote#:~:text=Today%20at%20the%20I%2FO,new%20users%20and%20hardware%20partners). 
+
+I talk about this over Goggle's Search Engine because it is often overlooked as one of the more profitable ventures of Google, making close to [$40 Billion dollars last year](https://www.statista.com/statistics/444476/google-play-annual-revenue/#:~:text=In%20the%20year%202020%2C%20the,compared%20to%20the%20previous%20year) with revenue expected to grow over the next few years. And it remains almost competitor proof (with the exception of Samsung and Apple.)
+
+The Play Store targets anyone who owns an android phone (Preloaded on Android phones) and is not using an alternative and wants to download an app. 
+
+Their key goals are to get you to download its apps or purchase some sort of entertainment. 
+
+## App Features
+The app easily allows for access to the apps with a search bar on the top, a featured app below it, and then categories with ads for apps filling the in-between space. At the bottom are four tabs, one for gaming (where it automatically places you), a tab for general apps, a tab for movies and tv, and a tab for books. 
+
+1. This is where the recommended system starts, because all the apps you see when you first open the app are recommended based on who you are and what the algorithm thinks that you might like (You can see this in action by asking someone else with an Android phone to share what their Play Store has).
+
+![](https://raw.githubusercontent.com/jhumms/DATA607/main/assignment11/main.jpg) 
+
+2. Then, when you do a search for something like 'Poker App' it will come up with recommendations based on popular apps as well as well ranked apps. 
+
+3. Even the ads themselves are recommended to you based off of their recommended algorithm. There is one that is found in a section 'Suggested for you', which seems to be based off of previously downloaded apps. 
+
+![](https://raw.githubusercontent.com/jhumms/DATA607/main/assignment11/suggestedforyou.jpg) 
+
+4. In the apps tab, there is section called 'you might like...' that recommends apps based off of your preferences
+
+![](https://raw.githubusercontent.com/jhumms/DATA607/main/assignment11/umitelik.jpg) 
+
+5. In the apps tab, there is another section called 'Recommended for you'
+
+![](https://raw.githubusercontent.com/jhumms/DATA607/main/assignment11/re4u.jpg) 
+
+6. Not to mention the Books and Entertainment that are suggested for you. This seems to stem from your Google search history since I have never purchased a book or movie from Google but they know exactly which ones I like.  
+
+
+
+
+
+## Recommendations
+
+The Play Store is another great Google app that allows for users to find (and sometimes discover) the apps and entertainment they want and need, it is hard to find ways to improve it.
+
+All aspects of the app contain a recommended system. From the featured app, to the search tool, to just looking through all the tabs in the store. It's no surprise that a Google product like this one is geared towards getting the user to the right app for his/her needs. My only complaint is in the UX, there is ad overload sometimes. For example with the search tool, the ads are the largest and most prominent features but not always the most relevant to me. 
+
+## Sources
+
+[All Images are Screenshots froom the Google Play Store](https://play.google.com/store)
+
+[Which App? A recommender system of applications in markets: Implementation of the service for monitoring users’ interaction](https://www.sciencedirect.com/science/article/abs/pii/S0957417412003946)
+
+[A Recommender System for Mobile Applications of
+Google Play Store](https://thesai.org/Downloads/Volume11No9/Paper_6-A_Recommender_System_for_Mobile_Applications.pdf)
+
+[Build your own Recommender System within 5 minutes!](https://towardsdatascience.com/build-your-own-recommender-system-within-5-minutes-30dd40388fbf)
