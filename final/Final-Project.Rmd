@@ -1,0 +1,566 @@
+---
+title: "Semester One Capstone"
+author: "Joshua Hummell"
+date: "3/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+#### The goal of this project is twofold to complete the requirements of Data 606 and 607. For this, it will be a combination of data engineering and data science. I will be pulling the top 200 (if available) movies for each genre in IMDB, then the same movies from other movie review sites,  Metacritic, and Cinemascore. The goal is to see if IMDB is biased towards a particular genre, to see if metacritic aligns with IMDB, and Cinemascore, a company that prides itself in estimating ratings when movies come out.  
+
+For this project, I have put in some requirements for the movies that I'm going to select. These movies are:
+1. English
+2. Ranked by Users (meaning it has some sort of start or number system)
+3. Have more than 100,000 thousand reviews
+4. Have at least 30 movies in the category 
+
+## The Plan  
+
+#### Extract the Movie Data and Run an ANOVA analysis
+
+1. IMDB & Metacritic: We are going to scrape the web for the top 100 in each genre
+2. We are going to download the data about movies from [IMDB](https://www.imdb.com/interfaces/) and match it with the titles from the website
+3. Run a Statistical Analysis to see whether these websites are biased towards certain movies
+
+#### Extra Analysis
+1. We are going to utilize the Cinemascore API to get the movies from there
+2. We are going to explore the data and see what insights we can find in the data
++ For Example, Cinemascore is a professional survey group that estimates the ratings of movies, let's see how their estimations hold up among the online reviews.  
+
+### Load necesary packages  
+```{r message=FALSE, warning=FALSE}
+library("base64enc")
+library("furrr")
+library("data.table")
+library("rvest")
+library("tidyverse")
+library("stringr")
+library("dplyr")
+library("rjson")
+library("stats")
+library("openintro")
+library("infer")
+library("heatmaply")
+library(R.utils)
+library("psych")
+library("ggpubr")
+library("rstatix")
+```
+
+
+## Extract the Movie Data and Run an ANOVA analysis
+#### IMDB data
+
+  
+1. Make a list of the genres we are going to be using to pull in the movie data  
+
+```{r}
+genres <- list("Action",	"Adventure",	"Animation",	"Biography",	"Comedy",	"Crime",	"Drama",	"Family",	"Fantasy",	"Film-Noir",	"History",	"Horror",	"Music",	"Musical",	"Mystery",	"Romance",	"Sci-Fi",	"Short-Film",	"Sport",	"Superhero",	"Thriller",	"War",	"Western")
+```
+
+
+2. Now we have to get a list of all the movie ID numbers 
+```{r warning=FALSE}
+
+# I like to measure the time it takes to run since sometimes it takes a while and I get distracted
+start_time <- Sys.time()
+# We are going to use the Furrr package to allow for multiple cores to get the data
+plan(multisession(workers = 10))
+
+#we are going to save the data as a list called 'titles'
+titles <- future_map(genres, function(x) {
+  p = str_c('https://www.imdb.com/search/title/?genres=',tolower(x),'&start=1&count=250&languages=en&sort=user_rating,desc&title_type=feature&num_votes=100000,', sep="")
+  URL_p = read_html(p)
+  
+    # Let's get the title id
+  title_id <- URL_p  %>% html_nodes( ".lister-item-image > a > img") %>% 
+      html_attr("data-tconst")
+    # Let's get the genre
+  genre <- rep(c(x), times = length(title_id))
+    # Let's get the rank
+  rank <- (1:length(title_id))
+    # Let's add it all to a list
+  my_list <- list(title_id, genre, rank)
+  
+  
+})
+end_time <- Sys.time()
+paste("Your dataframe has been built and it took",round(end_time - start_time), "seconds to complete.")
+
+# Let's turn the list to a Dataframe
+title_list <- rbindlist(titles)
+
+#Let's change the columns names
+colnames(title_list) <- c("title_id", "genre", "rank") 
+
+#Let's close all the extra cores
+future:::ClusterRegistry("stop")
+
+```
+  
+Let's see what we are working with   
+```{r}
+summary(as.factor(title_list[[2]]))
+```
+
+It looks like everything but Noir has at least 30 entries. I'm going to leave it in but take any results from it as not serious.  
+
+  
+3. We are going to scrape every movie page and collect some data about each movie. 
+
+And now we are going to scrape every page. Note, that while doing this I can into several issues with missing data, such as revenue and Metascore, for which I had to add logic to make sure they were on the page before I scraped it. 
+
+In addition, I originally ran it as a loop, but then found out about the Furrr package and realized I could map it and save a lot of time. However I had to limit the amount of cores in use because on the initial trials my IP was flagged as a bot and I was blacklisted. 
+
+If this were a larger and frequent data pull, it would need to be some sort of code that automatically cycled through different VPN IPs so you could get the data quicker and without being blocked. 
+```{r}
+dataPath <- setwd("..")
+if (file.exists(paste(dataPath,'/imdb.csv',sep = ""))) {
+  print("Already Exists")
+  movies <- read.csv(paste(dataPath,'/imdb.csv',sep = ""))
+} else {
+  start_time <- Sys.time()
+  
+  plan(multisession(workers = 7))
+  
+  movie_list <- future_map(as.list(title_list$title_id), function(x) {
+    
+        p = str_c('https://www.imdb.com/title/',x, sep="")
+          URL_p = read_html(p)
+      
+      
+      # Let's get the title
+        title <- URL_p  %>% html_nodes( ".star-rating-widget") %>% 
+          html_attr("data-title")
+        
+        # Let's get the title id
+        title_id <- x
+    
+        # Let's get the certificate
+        cert <- URL_p %>% html_nodes(".subtext") %>% 
+          html_text() %>%
+          strsplit(" |\\\n")
+        certificate <- cert[[1]][[22]]
+      
+        # Let's get the metascore
+        if (str_detect(URL_p,'Metascore')) {
+          metascore <- URL_p %>% html_nodes(".metacriticScore > span") %>% 
+            html_text() 
+        } else {
+          metascore <-""
+        }
+      
+      # Let's get the revenue
+        if (str_detect(URL_p,'Gross USA')) {
+          revenue <- URL_p %>% html_nodes(xpath='//*[@id="titleDetails"]/div[9]/text()[2]') %>% 
+          html_text() 
+          revenue <- str_trim(revenue)
+        } else {
+          revenue <- ""
+        }
+      # In order to map to work, we need to save all that information in a list
+        my_list <- list(title, title_id, certificate ,metascore, revenue)
+  })
+  end_time <- Sys.time()
+  paste("Your dataframe has been built and it took",round(end_time - start_time), "minutes to complete.")
+
+  future:::ClusterRegistry("stop")
+
+  #Convert list to dataframe and change the column titles
+  movies <- rbindlist(movie_list)
+  colnames(movies) <- c("title",
+                      "title_id",
+                       "certificate", 
+                       "metascore",
+                       "revenue")
+
+  # There were a few issues with the data, so we are going to get a unique list of the title ids and then fix any that were not pulled in correctly      as well as fix some of the errors in noticed in each column.
+  
+  #Get rid of all duplicate rows, since this is just for data mapping
+  nrow(movies)
+  movies <- movies  %>% distinct(title_id, .keep_all = TRUE)
+  nrow(movies)
+  
+  ## Certificate seems to have an error, it did not pull in 'Not Ranked'
+  movies %>% distinct(certificate, .keep_all = TRUE)
+  
+  l <- movies %>% filter(str_detect(certificate, "Not")) 
+  l$certificate <- "Not Ranked"
+  clean <- movies %>% filter(!str_detect(certificate, "Not"))
+  
+  movies <- rbind(clean, l)
+  
+  ## I also had an issue with some of the revenues
+  l <- movies %>% filter(!str_detect(revenue, "\\$")) 
+  l$revenue <- ""
+  clean <- movies %>% filter(str_detect(revenue, "\\$"))
+  
+  movies <- rbind(clean, l)
+  
+  # And an issue where GP is there instead of PG
+  l <- movies %>% filter(str_detect(certificate, "GP")) 
+  l$certificate <- "PG"
+  clean <- movies %>% filter(!str_detect(certificate, "GP"))
+  
+  movies <- rbind(clean, l)
+  #write.csv(movies,'C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Final Project/imdb.csv', row.names = FALSE)
+}
+```
+
+  
+4. Now, I'm going to pull from IMDB's movie database that has more information about each movie and match it up with what we have already.
+I pulled two things, information about the titles and also information about the ratings
+
+
+```{r}
+# Set WD
+dataPath <- setwd("..")
+
+if (file.exists(paste(dataPath,'/title_ratings.tsv',sep = ""))) {
+  print("Already Exists")
+  df_ratings <- read_tsv(paste(dataPath,'/title_ratings.tsv',sep = ""), na = "\\N", quote = '')
+  df_titles <- read_tsv(paste(dataPath,'/titles.tsv',sep = ""), na = "\\N", quote = '')
+} else {
+  
+  #Download files
+  download.file(url = "https://datasets.imdbws.com/title.ratings.tsv.gz",
+    mode = "wb",
+    destfile=file.path(dataPath, "title_ratings.tsv.gz"))
+
+  download.file(url = "https://datasets.imdbws.com/title.basics.tsv.gz",
+    mode = "wb",
+    destfile=file.path(dataPath, "titles.tsv.gz"))
+
+  setwd(dataPath)
+
+  gunzip("title_ratings.tsv.gz", remove = FALSE)
+  gunzip("titles.tsv.gz", remove = FALSE)
+
+  df_ratings <- read_tsv(paste(dataPath,'/title_ratings.tsv',sep = ""), na = "\\N", quote = '')
+  df_titles <- read_tsv(paste(dataPath,'/titles.tsv',sep = ""), na = "\\N", quote = '')
+}
+```  
+
+Now I am going to select my data and combine it all into one large dataset
+
+```{r}
+df_titles <- df_titles %>% select(tconst, startYear, runtimeMinutes)
+
+movies_clean <-  title_list %>% left_join(df_titles, by = c("title_id" = "tconst"))
+
+movies_clean <- movies_clean %>% left_join(df_ratings, by = c("title_id" = "tconst"))
+
+movies_clean <- movies_clean %>% left_join(movies, by = c("title_id" = "title_id"))
+
+rm(df_ratings)
+rm(df_titles)
+
+movies_clean <- movies_clean %>% select(title_id, title, genre, rank,averageRating, numVotes, metascore, revenue, certificate, startYear, runtimeMinutes)
+
+#write.csv(movies_clean,'C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Final Project/movies_clean.csv', row.names = FALSE)
+
+#movies_clean <- read.csv('C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Final Project/movies_clean.csv')
+```
+
+#### ANOVA Test
+
+(a) Write hypotheses for evaluating whether the average number of ratings varies across all 23 genres.
+- H naught: the average numbers all equal each other  
+- H alt: there is at least one average number not equal to the others
+
+Now let's get some summary statistics on our data
+```{r}
+movies_clean <- movies_clean %>%  mutate_if(sapply(movies_clean, is.character), as.factor)
+summary(movies_clean)
+```
+
+```{r}
+hist(movies_clean$averageRating)
+```
+It looks like overall, the data is fine for statistical analysis, we'll just have to check it at an individual level
+
+Now we can see that the average rating overall is 7.533 and the median is 7.6 and overall, the data is left skewed but normally distributed. So now we have to check each genre for three conditions to make sure we can analyze them for bias. 
+
+1. Independence
++ since the data is from at least 100,000 reviews, we can say that is is a simple independent survey. 
+2. Approximately normal
+```{r}
+ggplot(movies_clean, aes(x = averageRating)) +
+  geom_histogram(fill = "white", colour = "black", bins = 10) +
+  facet_grid(~ genre ~ ., scales = "free_y", margins = T)
+
+histBy(averageRating ~ genre, data=movies_clean) #formula input
+```
++ All the movies genres seem to follow a normal distribution
+3. Constant variance.
+```{r}
+par(las=2)
+boxPlot(movies_clean$averageRating, fact = movies_clean$genre, 
+        col = COL[1,2], ylab = "Average Movie Rating")
+```
++ It looks like all the movies have constant variance. 
+
+Now that we validated that the conditions are met, let's run the analysis.
+```{r}
+one.way <- aov(averageRating ~ genre, data = movies_clean)
+
+summary(one.way)
+```
+
+- The p-value is less than the than the default significance level of 0.05, therefore we reject the null hypothesis, there is bias in this data towards specific genres.  
+
+Let's run this with a bootstrap to see if we come to the same conclusion  
+
+```{r}
+
+library("lmboot")
+moviesAnova <- ANOVA.boot(averageRating ~ genre, B = 1000, type = "residual", wild.dist = "normal", 
+            seed = 3112 , data = movies_clean, keep.boot.resp = FALSE)
+
+moviesAnova$`p-values`
+```
+
+There are 0 p values that fail to reject the null hypothesis, so there is most definitely bias in the data.   
+
+Now that we know and have confirmed that there is bias, the next thing to do is run a 'pairwise t test' to see where the values differ. I'm going to make sure there is a bonferroni correction on it since there are a lot of genres and a therefore a lot of pairs.  
+
+The bonferroni correction is a method to counteract the problem of multiple comparisons.Statistical hypothesis testing is based on rejecting the null hypothesis if the likelihood of the observed data under the null hypotheses is low. If multiple hypotheses are tested, the chance of observing a rare event increases, and therefore, the likelihood of incorrectly rejecting a null hypothesis (i.e., making a Type I error) increases.
+
+The Bonferroni correction suggests that the p-value for each test must be equal to its alpha divided by the number of tests performed.
+
+
+```{r}
+pwc <- movies_clean %>% 
+  pairwise_t_test(
+    averageRating ~ genre, pool.sd = FALSE,
+    p.adjust.method = "bonferroni")
+
+pwc %>% arrange(desc(p))
+```
+This shows all the pairs between the movies and their P-value.
+
+
+Since there are 253 pairs, let's find out the genre that had the highest rating and the genre that had the lowest and see the results for them
+```{r}
+movies_clean %>% select(genre, averageRating) %>% group_by(genre) %>% summarise(avgRating = mean(averageRating)) %>% arrange(desc(avgRating))
+```
+
+
+Let's check to see the results for the top two!
+```{r}
+superhero <- pwc %>% filter(group2=="Superhero" | group1=="Superhero")
+superhero %>% arrange(p)
+
+short<- pwc %>% filter(group2=="Horror" | group1=="Horror")
+short %>% arrange(p)
+```
+Then let's plot the data using a bar chart with standard deviation bars.
+```{r}
+superhero <- superhero %>% add_xy_position(x = "genre", step.increase = 1)
+short <- short %>% add_xy_position(x = "genre", step.increase = 1)
+
+ggboxplot(movies_clean, x = "genre", y = "averageRating", add = "point") +
+  stat_pvalue_manual(superhero) +
+  rotate_x_text()
+
+ggboxplot(movies_clean, x = "genre", y = "averageRating", add = "point") +
+  stat_pvalue_manual(short) +
+  rotate_x_text()
+```
+
+As you can see from this the box plots with p-values, the Superhero movie has more movies with similar P-Values than horror movies
+
+
+
+
+## Extra Analysis  
+
+Cinemascore
+
+In order to get this data I had to call the 'unofficial API'. To be transparent, there is nothing on the website that prevents me from legally doing this although this definitely crosses the line between 'on the internet' and a little unethical. Since it is for academic purposes, my moral compass is going to let it slide.  
+
+How it was done. 
+
+1. While digging through the website, I noticed that for each search term it required a minimum of two letters then the website would send these letters encoded to an API which would send back the movie title with the rating information. 
+
+2. Once sent, there was a link that you could access in the developer tools that showed the results in JSON
+
+3. I realized that the encoded words were simply a cipher by trying out several combinations of letter patters (ab: YWI=, ba: YmE=) and realizing there was a pattern happening on the front end
+
+4. Since it was happening on the front end, I then dug into the JS to find the method of encryption which was Base64
+
+5. Running a few letters and matching them with the site I confirmed it was the Base64 cipher. 
+
+6. I figured it would be easier to get all movies rather than create a list and search for them. So I created a list that contained all two letter combinations possible. 
+
+```{r}
+cinemascore <- data.frame(title=character(),
+                       grade=character(),
+                       year=character()) 
+
+
+combo <- list()
+for (i in letters[1:26]){
+  for (j in letters[1:26]) {
+    combo <- append(combo, str_c(i,j, sep = ""))  
+  }
+}
+
+dataPath <- setwd("..")
+
+if (file.exists(paste(dataPath,'/Cinamascore.csv',sep = ""))) {
+  print("Already Exists")
+  cinemascore = read.csv2('C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Final Project/Cinamascore.csv', sep = ",")
+} else {
+    for (i in unique(combo)) {
+    # Read in the names as base64
+    query = str_c("https://api.cinemascore.com/guest/search/title/", base64encode(charToRaw(i)), sep="")
+    # get the webpage content
+    Desc <- read_html(query)  %>%  html_text()
+    # Convert that data to a list from JSON
+    data <- fromJSON(Desc)
+    # Turn the nested list into a dataframe
+    cinema <- as.data.frame(do.call(rbind, data))
+    # Append the data to the
+    if (cinema$TITLE != 'No Results') {
+      cinemascore <- rbind(cinemascore, cinema)
+    }  
+  }
+  
+  cinemascore <- distinct(cinemascore)
+  cinemascore <- as.data.frame(lapply(cinemascore, unlist))
+  cinemascore <-data.frame(lapply(cinemascore, factor))
+  
+  
+  g <- c("A+","A","A-","B+", "B", "B-","C+","C","C-","D+","D", "D-","F")
+  Score <- c(1,2,3,4,5,6,7,8,9,10,11,12,13)
+  Grade <- data.frame(g,Score)
+  
+  
+  cinemascore <- cinemascore %>% left_join(Grade, by = c("GRADE" = "g"))
+  
+}
+ 
+cinemascore %>% ggplot(aes(x=Score)) +
+  geom_bar()
+#write.csv(cinemascore,'C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Final Project/Cinamascore.csv', row.names = FALSE)
+#cinemascore = read.csv2('C:/Users/humme/Google Drive/CUNY Classes/Data 607/Projects/Final Project/Cinamascore.csv', sep = ",")
+
+```
+
+Let's combine the dataframes
+```{r}
+
+#Match title style with the movies tab
+cinemascore$TITLE <- str_to_title(cinemascore$TITLE)
+
+#make it so that both databases can be joined
+cinemascore$title_match <- str_replace(cinemascore$TITLE, ", The","")
+
+movies_clean$title_match <- str_replace(movies_clean$title, "The ","")
+
+#make it so that we are not working on individual movies
+movies_unique <- movies_clean %>% distinct(title_id, .keep_all = T)
+
+# Join tables
+movies_all <-  movies_unique %>% left_join(cinemascore, by = "title_match")
+
+# Filter out unneeded columns
+movies_all <- movies_all %>% select(-TITLE, -GRADE, -YEAR, -title_match)
+
+movies_all$metascore <- as.numeric(as.character(movies_all$metascore))
+
+#Now let's normalize the data
+movies_all$imdb_norm <- heatmaply::normalize(movies_all$averageRating, range = c(0, 1))
+movies_all$meta_norm <- heatmaply::normalize(movies_all$metascore, range = c(0, 1))
+movies_all$cine_norm <- heatmaply::normalize(movies_all$Score, range = c(0, 1))
+
+#Finally, let's filter the data for movies that exist in all three, and also just metascore and Imdb (since there are more)
+
+movies_imc <- movies_all %>% filter(cine_norm >= 0 & meta_norm >= 0)
+
+movies_im <- movies_all %>% filter( meta_norm >= 0)
+
+```
+
+#### IMDB and MetaScore Analysis
+
+```{r}
+movies_im$difference <- movies_im$imdb_norm - movies_im$meta_norm
+mean(movies_im$difference)
+```
+The average movie is 6 points higher on IMDB, let's see what it looks like for each genre
+
+```{r}
+movies_im %>% group_by(genre) %>% summarise(Average_Difference = mean(difference)) %>% arrange(desc(Average_Difference))
+```
+
+
+Let's graph it so that we can see it better. 
+```{r}
+par(las=2)
+boxPlot(movies_im$difference, fact = movies_im$genre, 
+        col = COL[1,2], ylab = "Average Movie Rating Difference: IMDB vs Metascore")
+```
+#### IMDB and Cinemascore Analysis
+```{r}
+
+movies_imc$difference_IM <- movies_imc$imdb_norm - movies_imc$meta_norm
+movies_imc$difference_IC <- movies_imc$imdb_norm - movies_imc$cine_norm
+movies_imc$difference_MC <- movies_imc$meta_norm - movies_imc$cine_norm
+mean(movies_imc$difference_IM)
+mean(movies_imc$difference_IC)
+mean(movies_imc$difference_M)
+
+```
+Interestingly, it looks like the biggest difference is between the Cinemascore and IMDB (because there was not as many movies that aligned for the three movie databases, the difference between IMDB and Metascore has changed), let's dig deeper:
+```{r}
+par(las=2)
+boxPlot(movies_imc$difference_IC, fact = movies_imc$genre, 
+        col = COL[1,2], ylab = "Rating Difference: IMDB vs Cinemascore")
+```
+Let's see if this is a trend overall or a historic trend
+
+```{r}
+ggplot(movies_imc, aes(x=startYear, y=difference_IC)) +
+  geom_point()
+```
+
+Since this is 'IMDB - Cinemascore' the positive reflects movies where the reviews were higher rated on IMDB rather than by Cinemascore. Possible reason for this is that IMDB reviewers do not necessarily reflect everyday Americans like the Cinemascore does.
+
+
+#### IMDB Analysis  
+
+Let's see if there is any correlation between revenue and any of the columns
+
+```{r}
+movies_clean_analysis = movies_clean
+movies_clean_analysis$revenue <- str_replace(movies_clean_analysis$revenue, "\\$","")
+movies_clean_analysis$revenue <- str_replace_all(movies_clean_analysis$revenue, ",","")
+movies_clean_analysis$revenue <- as.numeric(as.character(movies_clean_analysis$revenue))
+is.numeric(movies_clean_analysis$revenue)
+
+movies_clean_analysis$metascore <- as.numeric(as.character(movies_clean_analysis$metascore))
+
+
+m_full <- lm(revenue ~ genre + rank + averageRating + numVotes + metascore 
+             + certificate + startYear, data = movies_clean_analysis)
+summary(m_full)$coefficient
+```
+Interesting, it looks like the two biggest factors for revenue are the number of votes it has received (probably the more popular a movie is the more money it receives) and year, which may be because the revenue numbers weren't normalized. 
+
+The worst predictors were certificate and genre (with the exception of short-film, superhero, and drama)
+
+Let's see if there is any correlation between average rating and any of the columns
+
+```{r}
+m_full2 <- lm(averageRating ~ genre + rank + revenue + numVotes + metascore 
+             + certificate + startYear, data = movies_clean_analysis)
+summary(m_full2)$coefficient
+```
+
+So the most significant factors here are the genre, rank (the most, so much so that it the computer cannot tell it's not 0), number of votes, metascore, and start year (apparently the older the movie the better). Interestingly, revenue was significant but not that much, while the certificates again had no impact. 
